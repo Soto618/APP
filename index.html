@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="description" content="DollarBank PWA - presupuesto personal 50/30/20" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <title>DollarBank PWA</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="header">
+    <p class="eyebrow">CAPITAL DISPONIBLE</p>
+    <div class="balance-val" id="main-balance">$0.00</div>
+    <div class="sub-balance" id="secondary-balance">Ahorro acumulado: $0.00</div>
+  </header>
+
+  <main>
+    <section id="home" class="page active">
+      <h3>Dashboard</h3>
+
+      <div id="storage-warning" class="notice hidden"></div>
+
+      <div class="card">
+        <label class="input-label" for="pay-input">Agregar ingreso</label>
+        <div class="inline-input">
+          <input type="number" id="pay-input" placeholder="0.00" min="0" step="0.01" />
+          <button id="add-income-btn" class="btn btn-green">Guardar</button>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <button data-open-modal="expense-modal" class="card action-card red">📉 Registrar Gasto</button>
+        <button data-open-modal="adjust-modal" class="card action-card gray">✏️ Ajustar Balance</button>
+      </div>
+
+      <div class="grid-2">
+        <button data-open-modal="save-modal" class="card action-card blue">💰 Mandar a Ahorro</button>
+        <button data-open-modal="return-modal" class="card action-card cyan">↩️ Regresar de Ahorro</button>
+      </div>
+
+      <div class="grid-2">
+        <button id="export-btn" class="card action-card slate">📤 Exportar Respaldo</button>
+        <button id="import-open-btn" class="card action-card purple">📥 Importar Respaldo</button>
+      </div>
+
+      <div class="grid-2">
+        <button id="install-btn" class="card action-card amber hidden">📲 Instalar App</button>
+        <button id="reset-btn" class="card action-card darkred">🧹 Reiniciar App</button>
+      </div>
+
+      <input type="file" id="import-file" accept="application/json" hidden />
+
+      <div class="section-title">RESUMEN RÁPIDO</div>
+      <div class="card">
+        <div class="item-row"><span>Balance principal</span><b id="home-balance">$0.00</b></div>
+        <div class="item-row"><span>Ahorro acumulado</span><b id="home-savings">$0.00</b></div>
+        <div class="item-row"><span>Total disponible</span><b id="home-total">$0.00</b></div>
+      </div>
+
+      <div class="section-title">HISTORIAL RECIENTE</div>
+      <div id="history-list" class="card slim-card"></div>
+    </section>
+
+    <section id="budget" class="page">
+      <h3>Planificación 50/30/20</h3>
+
+      <div class="q-selector">
+        <button id="q1-btn" class="q-btn">1ra Quincena (1-15)</button>
+        <button id="q2-btn" class="q-btn">2da Quincena (16-31)</button>
+      </div>
+
+      <div class="card">
+        <label class="input-label" for="calc-input">Ingreso de esta quincena</label>
+        <input type="number" id="calc-input" placeholder="0.00" min="0" step="0.01" />
+
+        <div class="grid-3 budget-boxes">
+          <div class="mini-box green">
+            NEC (50%)
+            <b id="nec-val">$0</b>
+          </div>
+          <div class="mini-box yellow">
+            GUS (30%)
+            <b id="gus-val">$0</b>
+          </div>
+          <div class="mini-box blue">
+            AHO (20%)
+            <b id="aho-val">$0</b>
+          </div>
+        </div>
+
+        <div id="quincena-breakdown"></div>
+
+        <div class="section-title">LISTA COMPLETA DEL MES</div>
+        <div id="full-month-list"></div>
+      </div>
+    </section>
+
+    <section id="calendar-page" class="page">
+      <h3>Calendario</h3>
+      <div class="card">
+        <div id="month-name" class="month-name"></div>
+        <div class="calendar-grid" id="calendar-body"></div>
+      </div>
+      <div id="day-details"></div>
+    </section>
+
+    <section id="payments" class="page">
+      <div class="header-row">
+        <h3>Suscripciones y pagos</h3>
+        <button data-open-modal="subscription-modal" class="btn-inline">+ Nuevo</button>
+      </div>
+      <div id="subscription-list"></div>
+    </section>
+  </main>
+
+  <nav class="nav-bar">
+    <button class="nav-item active-nav" data-page="home">INICIO</button>
+    <button class="nav-item" data-page="budget">PLAN</button>
+    <button class="nav-item" data-page="calendar-page">CALEN.</button>
+    <button class="nav-item" data-page="payments">AJUSTES</button>
+  </nav>
+
+  <div class="modal-backdrop hidden" id="modal-backdrop"></div>
+
+  <div class="modal hidden" id="expense-modal">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h4>Registrar gasto</h4>
+        <button class="close-modal" data-close-modal>&times;</button>
+      </div>
+      <form id="expense-form" class="form-stack">
+        <input type="text" name="concepto" placeholder="Concepto" required />
+        <input type="number" name="monto" placeholder="Monto" min="0" step="0.01" required />
+        <select name="cat" required>
+          <option value="nec">Necesidad</option>
+          <option value="gus">Gusto</option>
+          <option value="aho">Ahorro</option>
+        </select>
+        <button class="btn btn-red" type="submit">Guardar gasto</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="save-modal">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h4>Mandar a ahorro</h4>
+        <button class="close-modal" data-close-modal>&times;</button>
+      </div>
+      <form id="save-form" class="form-stack">
+        <input type="text" name="concepto" placeholder="Concepto" value="Ahorro" required />
+        <input type="number" name="monto" placeholder="Monto" min="0" step="0.01" required />
+        <button class="btn btn-blue" type="submit">Mover a ahorro</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="return-modal">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h4>Regresar de ahorro</h4>
+        <button class="close-modal" data-close-modal>&times;</button>
+      </div>
+      <form id="return-form" class="form-stack">
+        <input type="text" name="concepto" placeholder="Concepto" value="Retiro de ahorro" required />
+        <input type="number" name="monto" placeholder="Monto" min="0" step="0.01" required />
+        <button class="btn btn-cyan" type="submit">Regresar al balance</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="adjust-modal">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h4>Ajustar balance</h4>
+        <button class="close-modal" data-close-modal>&times;</button>
+      </div>
+      <form id="adjust-form" class="form-stack">
+        <input type="number" name="balance" placeholder="Nuevo balance real" min="0" step="0.01" required />
+        <button class="btn btn-gray" type="submit">Aplicar ajuste</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="subscription-modal">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h4>Nueva suscripción</h4>
+        <button class="close-modal" data-close-modal>&times;</button>
+      </div>
+      <form id="subscription-form" class="form-stack">
+        <input type="text" name="nombre" placeholder="Nombre" required />
+        <input type="number" name="dia" placeholder="Día (1-31)" min="1" max="31" step="1" required />
+        <input type="number" name="monto" placeholder="Monto" min="0" step="0.01" required />
+        <select name="cat" required>
+          <option value="nec">Necesidad</option>
+          <option value="gus">Gusto</option>
+          <option value="aho">Ahorro</option>
+        </select>
+        <button class="btn btn-accent" type="submit">Agregar pago</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="edit-modal">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h4>Editar movimiento</h4>
+        <button class="close-modal" data-close-modal>&times;</button>
+      </div>
+      <form id="edit-form" class="form-stack">
+        <input type="hidden" name="id" />
+        <input type="text" name="concepto" placeholder="Concepto" required />
+        <input type="number" name="monto" placeholder="Monto" min="0" step="0.01" required />
+        <select name="cat" required>
+          <option value="nec">Necesidad</option>
+          <option value="gus">Gusto</option>
+          <option value="aho">Ahorro</option>
+        </select>
+        <button class="btn btn-accent" type="submit">Guardar cambios</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
