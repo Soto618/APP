@@ -31,12 +31,24 @@ let chartLine  = null;
 
 const categoryLabels = { nec: 'Necesidad', gus: 'Gusto', aho: 'Ahorro' };
 
-/* Balance inicial limpio — el usuario setea su propio balance */
+/* Datos por defecto — el balance arranca en 0, las suscripciones vienen precargadas */
 const defaultDb = {
   balance: 0,
   savingsBalance: 0,
   historial: [],
-  servicios: []
+  servicios: [
+    { id: 1,  n: "Pago Carro",     d: 1,  m: 495,   cat: "nec" },
+    { id: 2,  n: "Netflix",        d: 1,  m: 21.51, cat: "gus" },
+    { id: 4,  n: "PS Plus",        d: 4,  m: 9.99,  cat: "gus" },
+    { id: 5,  n: "Pago Terreno",   d: 5,  m: 150,   cat: "nec" },
+    { id: 6,  n: "Game Pass",      d: 6,  m: 16.49, cat: "gus" },
+    { id: 7,  n: "Tidal",          d: 11, m: 16.99, cat: "gus" },
+    { id: 8,  n: "Prime Video",    d: 13, m: 14.99, cat: "gus" },
+    { id: 9,  n: "Wifi",           d: 14, m: 70,    cat: "nec" },
+    { id: 10, n: "Seguro Carro",   d: 16, m: 170,   cat: "nec" },
+    { id: 11, n: "ChatGPT",        d: 16, m: 19.99, cat: "gus" },
+    { id: 12, n: "Línea Teléfono", d: 20, m: 90,    cat: "nec" }
+  ]
 };
 
 /* ─── UTILIDADES ─── */
