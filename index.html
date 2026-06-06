@@ -8,6 +8,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/estilo.css">
+    <!-- Favicon simple (emoji) -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💰</text></svg>">
 </head>
 <body>
     <div class="app-container">
@@ -51,7 +53,7 @@
             <section class="categories-grid">
                 <article class="category-card necesidades">
                     <div class="category-header">
-                        <span class="category-name">🏠 Necesidades</span>
+                        <span class="category-name"><span class="cat-icon">🏠</span> Necesidades</span>
                         <span class="category-percent">50%</span>
                     </div>
                     <div class="category-detail">
@@ -63,7 +65,7 @@
                 </article>
                 <article class="category-card deseos">
                     <div class="category-header">
-                        <span class="category-name">🎉 Deseos</span>
+                        <span class="category-name"><span class="cat-icon">🎉</span> Deseos</span>
                         <span class="category-percent">30%</span>
                     </div>
                     <div class="category-detail">
@@ -75,7 +77,7 @@
                 </article>
                 <article class="category-card ahorro">
                     <div class="category-header">
-                        <span class="category-name">🔒 Ahorro</span>
+                        <span class="category-name"><span class="cat-icon">🔒</span> Ahorro</span>
                         <span class="category-percent">20%</span>
                     </div>
                     <div class="category-detail">
@@ -119,12 +121,12 @@
         <div class="tab-content" id="tab-suscripciones">
             <section class="subscriptions-layout">
                 <div class="form-card">
-                    <h3><span class="icon-circle" style="background:var(--warning-bg);color:var(--warning)">🔄</span> Añadir Suscripción</h3>
+                    <h3><span class="icon-circle icon-sub">🔄</span> Añadir Suscripción</h3>
                     <form id="formSuscripcionForm" autocomplete="off">
                         <div class="form-group"><label for="nombreSub">Nombre del servicio</label><input type="text" id="nombreSub" placeholder="Ej. Netflix" maxlength="40" required></div>
                         <div class="form-group"><label for="montoSub">Monto mensual</label><input type="number" id="montoSub" placeholder="Ej. 179.00" min="0.01" step="0.01" required></div>
                         <div class="form-group"><label for="categoriaSub">Se descuenta de</label><select id="categoriaSub" required><option value="necesidades">🏠 Necesidades</option><option value="deseos">🎉 Deseos</option></select></div>
-                        <button type="submit" class="btn" style="background:transparent;border:1.5px solid var(--warning);color:var(--warning);">➕ Añadir Suscripción</button>
+                        <button type="submit" class="btn btn-subscription">➕ Añadir Suscripción</button>
                     </form>
                 </div>
                 <div class="subscription-list-card">
