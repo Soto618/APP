@@ -73,7 +73,7 @@
         return false;
     }
 
-    // Utilidades
+    // Utilidades matemáticas
     const disponibleDe = cat => Math.max(0, cat.asignado - cat.gastado);
     const saldoTotal = () => disponibleDe(state.categorias.necesidades) + disponibleDe(state.categorias.deseos) + disponibleDe(state.categorias.ahorro);
     const gastoDiario = () => {
