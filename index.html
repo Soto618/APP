@@ -1,319 +1,141 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#0f172a" />
-  <meta name="description" content="DollarBank PWA - presupuesto personal 50/30/20" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="DollarBank" />
-  <link rel="manifest" href="manifest.json" />
-  <link rel="icon" href="icons/icon-192.png" />
-  <link rel="apple-touch-icon" href="icons/icon-192.png" />
-  <title>DollarBank PWA</title>
-  <link rel="stylesheet" href="styles.css" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FinanceFlow · Presupuesto 50/30/20</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/estilo.css">
 </head>
 <body>
-  <header class="header">
-    <p class="eyebrow">CAPITAL DISPONIBLE</p>
-    <div class="balance-val" id="main-balance">$0.00</div>
-    <div class="sub-balance" id="secondary-balance">Ahorro acumulado: $0.00</div>
-  </header>
+    <div class="app-container">
+        <header class="app-header">
+            <div class="app-logo">
+                <div class="logo-icon">💰</div>
+                <div class="logo-text">
+                    <h1>FinanceFlow</h1>
+                    <span>Presupuesto Base Cero</span>
+                </div>
+            </div>
+            <div class="quincena-badge">
+                <span class="dot"></span> Quincena activa · 15 días
+            </div>
+        </header>
 
-  <main>
-    <!-- ══════════ INICIO ══════════ -->
-    <section id="home" class="page active">
-      <h3>Dashboard</h3>
+        <!-- Pestañas de navegación -->
+        <nav class="tab-nav" id="tabNav">
+            <button class="tab-btn active" data-tab="dashboard">📊 Dashboard</button>
+            <button class="tab-btn" data-tab="movimientos">📋 Movimientos</button>
+            <button class="tab-btn" data-tab="suscripciones">🔄 Suscripciones</button>
+        </nav>
 
-      <div id="storage-warning" class="notice hidden"></div>
+        <!-- Contenido de pestañas -->
+        <div class="tab-content active" id="tab-dashboard">
+            <section class="summary-panel">
+                <div class="summary-card total-card">
+                    <span class="summary-icon-bg">💎</span>
+                    <p class="summary-label">Saldo Total Disponible</p>
+                    <p class="summary-amount" id="saldoTotal">$0.00</p>
+                    <p class="summary-subtitle">Incluye ahorro reservado</p>
+                </div>
+                <div class="summary-card daily-card">
+                    <span class="summary-icon-bg">📅</span>
+                    <p class="summary-label">Gasto Diario Sugerido</p>
+                    <p class="summary-amount daily" id="gastoDiario">$0.00</p>
+                    <p class="summary-subtitle">Disponible ÷ 15 días</p>
+                </div>
+            </section>
 
-      <div class="card">
-        <label class="input-label" for="pay-input">Agregar ingreso</label>
-        <div class="inline-input">
-          <input type="number" id="pay-input" placeholder="0.00" min="0" step="0.01" inputmode="decimal" />
-          <button id="add-income-btn" class="btn btn-green">Guardar</button>
-        </div>
-      </div>
+            <section class="categories-grid">
+                <article class="category-card necesidades">
+                    <div class="category-header">
+                        <span class="category-name">🏠 Necesidades</span>
+                        <span class="category-percent">50%</span>
+                    </div>
+                    <div class="category-detail">
+                        <div class="detail-row"><span class="detail-label">Asignado</span><span class="detail-value" id="necAsignado">$0.00</span></div>
+                        <div class="detail-row"><span class="detail-label">Gastado</span><span class="detail-value spent" id="necGastado">$0.00</span></div>
+                        <div class="detail-row"><span class="detail-label">Disponible</span><span class="detail-value positive" id="necDisponible">$0.00</span></div>
+                    </div>
+                    <div class="progress-bar-container"><div class="progress-bar-fill" id="necProgress" style="width:0%"></div></div>
+                </article>
+                <article class="category-card deseos">
+                    <div class="category-header">
+                        <span class="category-name">🎉 Deseos</span>
+                        <span class="category-percent">30%</span>
+                    </div>
+                    <div class="category-detail">
+                        <div class="detail-row"><span class="detail-label">Asignado</span><span class="detail-value" id="desAsignado">$0.00</span></div>
+                        <div class="detail-row"><span class="detail-label">Gastado</span><span class="detail-value spent" id="desGastado">$0.00</span></div>
+                        <div class="detail-row"><span class="detail-label">Disponible</span><span class="detail-value positive" id="desDisponible">$0.00</span></div>
+                    </div>
+                    <div class="progress-bar-container"><div class="progress-bar-fill" id="desProgress" style="width:0%"></div></div>
+                </article>
+                <article class="category-card ahorro">
+                    <div class="category-header">
+                        <span class="category-name">🔒 Ahorro</span>
+                        <span class="category-percent">20%</span>
+                    </div>
+                    <div class="category-detail">
+                        <div class="detail-row"><span class="detail-label">Asignado</span><span class="detail-value" id="ahoAsignado">$0.00</span></div>
+                        <div class="detail-row"><span class="detail-label">Reservado</span><span class="detail-value spent" id="ahoGastado">$0.00</span></div>
+                        <div class="detail-row"><span class="detail-label">Disponible</span><span class="detail-value positive" id="ahoDisponible">$0.00</span></div>
+                    </div>
+                    <div class="progress-bar-container"><div class="progress-bar-fill" id="ahoProgress" style="width:0%"></div></div>
+                </article>
+            </section>
 
-      <div class="grid-2">
-        <button data-open-modal="expense-modal" class="card action-card red">
-          <span class="ac-icon">📉</span><span>Registrar Gasto</span>
-        </button>
-        <button data-open-modal="adjust-modal" class="card action-card gray">
-          <span class="ac-icon">✏️</span><span>Ajustar Balance</span>
-        </button>
-      </div>
-
-      <div class="grid-2">
-        <button data-open-modal="save-modal" class="card action-card blue">
-          <span class="ac-icon">💰</span><span>Mandar a Ahorro</span>
-        </button>
-        <button data-open-modal="return-modal" class="card action-card cyan">
-          <span class="ac-icon">↩️</span><span>Regresar de Ahorro</span>
-        </button>
-      </div>
-
-      <div class="grid-2">
-        <button id="export-btn" class="card action-card slate">
-          <span class="ac-icon">📤</span><span>Exportar Respaldo</span>
-        </button>
-        <button id="import-open-btn" class="card action-card purple">
-          <span class="ac-icon">📥</span><span>Importar Respaldo</span>
-        </button>
-      </div>
-
-      <div class="grid-2">
-        <button id="install-btn" class="card action-card amber hidden">
-          <span class="ac-icon">📲</span><span>Instalar App</span>
-        </button>
-        <button id="reset-btn" class="card action-card darkred">
-          <span class="ac-icon">🧹</span><span>Reiniciar App</span>
-        </button>
-      </div>
-
-      <input type="file" id="import-file" accept="application/json" hidden />
-
-      <div class="section-title">RESUMEN RÁPIDO</div>
-      <div class="card">
-        <div class="item-row"><span>Balance principal</span><b id="home-balance">$0.00</b></div>
-        <div class="item-row"><span>Ahorro acumulado</span><b id="home-savings">$0.00</b></div>
-        <div class="item-row"><span>Total disponible</span><b id="home-total">$0.00</b></div>
-      </div>
-
-      <div class="section-title">HISTORIAL RECIENTE</div>
-      <div id="history-list" class="card slim-card"></div>
-      <div id="history-more-wrap" style="text-align:center;margin-bottom:15px;">
-        <button id="history-more-btn" class="btn-inline hidden">Ver más movimientos</button>
-      </div>
-    </section>
-
-    <!-- ══════════ PLAN ══════════ -->
-    <section id="budget" class="page">
-      <h3>Planificación 50/30/20</h3>
-
-      <div class="q-selector">
-        <button id="q1-btn" class="q-btn">1ra Quincena (1-15)</button>
-        <button id="q2-btn" class="q-btn">2da Quincena (16-31)</button>
-      </div>
-
-      <div class="card">
-        <label class="input-label" for="calc-input">Ingreso de esta quincena</label>
-        <input type="number" id="calc-input" placeholder="0.00" min="0" step="0.01" inputmode="decimal" />
-
-        <div class="grid-3 budget-boxes">
-          <div class="mini-box green">
-            NEC (50%)
-            <b id="nec-val">$0</b>
-          </div>
-          <div class="mini-box yellow">
-            GUS (30%)
-            <b id="gus-val">$0</b>
-          </div>
-          <div class="mini-box blue">
-            AHO (20%)
-            <b id="aho-val">$0</b>
-          </div>
+            <section class="forms-grid">
+                <div class="form-card">
+                    <h3><span class="icon-circle icon-income">+</span> Añadir Ingreso</h3>
+                    <form id="formIngresoForm" autocomplete="off">
+                        <div class="form-group"><label for="montoIngreso">Monto del ingreso</label><input type="number" id="montoIngreso" placeholder="Ej. 15000.00" min="0.01" step="0.01" required></div>
+                        <button type="submit" class="btn btn-income">💰 Procesar Ingreso</button>
+                    </form>
+                </div>
+                <div class="form-card">
+                    <h3><span class="icon-circle icon-expense">−</span> Registrar Gasto</h3>
+                    <form id="formGastoForm" autocomplete="off">
+                        <div class="form-group"><label for="montoGasto">Monto</label><input type="number" id="montoGasto" placeholder="Ej. 350.00" min="0.01" step="0.01" required></div>
+                        <div class="form-group"><label for="descripcionGasto">Descripción</label><input type="text" id="descripcionGasto" placeholder="Ej. Supermercado" maxlength="60" required></div>
+                        <div class="form-group"><label for="categoriaGasto">Categoría</label><select id="categoriaGasto" required><option value="necesidades">🏠 Necesidades</option><option value="deseos">🎉 Deseos</option></select></div>
+                        <button type="submit" class="btn btn-expense">📝 Registrar Gasto</button>
+                    </form>
+                </div>
+            </section>
         </div>
 
-        <div id="quincena-breakdown"></div>
-
-        <!-- TOTAL SOBRANTE -->
-        <div id="total-remainder-box" class="total-remainder hidden"></div>
-
-        <div class="section-title">LISTA COMPLETA DEL MES</div>
-        <div id="full-month-list"></div>
-      </div>
-    </section>
-
-    <!-- ══════════ CALENDARIO ══════════ -->
-    <section id="calendar-page" class="page">
-      <h3>Calendario</h3>
-      <div class="card">
-        <div class="calendar-nav">
-          <button id="cal-prev" class="cal-nav-btn">‹</button>
-          <div id="month-name" class="month-name"></div>
-          <button id="cal-next" class="cal-nav-btn">›</button>
+        <!-- Pestaña Movimientos -->
+        <div class="tab-content" id="tab-movimientos">
+            <section class="history-card">
+                <h3>📋 Últimos Movimientos</h3>
+                <ul class="history-list" id="historyList"><li class="empty-history">No hay movimientos registrados aún.</li></ul>
+            </section>
         </div>
-        <div class="calendar-grid" id="calendar-body"></div>
-      </div>
-      <div id="day-details"></div>
-    </section>
 
-    <!-- ══════════ GRÁFICAS ══════════ -->
-    <section id="charts-page" class="page">
-      <h3>Gráficas</h3>
-
-      <div class="section-title">DISTRIBUCIÓN DEL MES</div>
-      <div class="card">
-        <canvas id="chart-donut" height="220"></canvas>
-        <div id="chart-legend" class="chart-legend"></div>
-      </div>
-
-      <div class="section-title">GASTOS POR CATEGORÍA</div>
-      <div class="card">
-        <canvas id="chart-bars" height="200"></canvas>
-      </div>
-
-      <div class="section-title">BALANCE HISTÓRICO (últimos 30 mov.)</div>
-      <div class="card">
-        <canvas id="chart-line" height="180"></canvas>
-      </div>
-
-      <div class="section-title">SUSCRIPCIONES FIJAS</div>
-      <div class="card">
-        <div id="chart-subs-summary"></div>
-      </div>
-    </section>
-
-    <!-- ══════════ SUSCRIPCIONES ══════════ -->
-    <section id="payments" class="page">
-      <div class="header-row">
-        <h3>Suscripciones y pagos</h3>
-        <button data-open-modal="subscription-modal" class="btn-inline">+ Nuevo</button>
-      </div>
-      <div id="subscription-list"></div>
-    </section>
-  </main>
-
-  <!-- NAV BAR con iconos -->
-  <nav class="nav-bar">
-    <button class="nav-item active-nav" data-page="home">
-      <span class="nav-icon">🏠</span>
-      <span>INICIO</span>
-    </button>
-    <button class="nav-item" data-page="budget">
-      <span class="nav-icon">📊</span>
-      <span>PLAN</span>
-    </button>
-    <button class="nav-item" data-page="calendar-page">
-      <span class="nav-icon">📅</span>
-      <span>CALEN.</span>
-    </button>
-    <button class="nav-item" data-page="charts-page">
-      <span class="nav-icon">📈</span>
-      <span>GRAFICAS</span>
-    </button>
-    <button class="nav-item" data-page="payments">
-      <span class="nav-icon">💳</span>
-      <span>PAGOS</span>
-    </button>
-  </nav>
-
-  <!-- TOAST -->
-  <div id="toast-container"></div>
-
-  <!-- MODAL BACKDROP -->
-  <div class="modal-backdrop hidden" id="modal-backdrop"></div>
-
-  <!-- MODAL: Registrar gasto -->
-  <div class="modal hidden" id="expense-modal">
-    <div class="modal-card">
-      <div class="modal-head">
-        <h4>Registrar gasto</h4>
-        <button class="close-modal" data-close-modal>&times;</button>
-      </div>
-      <div class="form-stack">
-        <input type="text" id="exp-concepto" placeholder="Concepto" />
-        <input type="number" id="exp-monto" placeholder="Monto" min="0" step="0.01" inputmode="decimal" />
-        <select id="exp-cat">
-          <option value="nec">Necesidad</option>
-          <option value="gus">Gusto</option>
-          <option value="aho">Ahorro</option>
-        </select>
-        <button class="btn btn-red" id="exp-submit">Guardar gasto</button>
-      </div>
+        <!-- Pestaña Suscripciones -->
+        <div class="tab-content" id="tab-suscripciones">
+            <section class="subscriptions-layout">
+                <div class="form-card">
+                    <h3><span class="icon-circle" style="background:var(--warning-bg);color:var(--warning)">🔄</span> Añadir Suscripción</h3>
+                    <form id="formSuscripcionForm" autocomplete="off">
+                        <div class="form-group"><label for="nombreSub">Nombre del servicio</label><input type="text" id="nombreSub" placeholder="Ej. Netflix" maxlength="40" required></div>
+                        <div class="form-group"><label for="montoSub">Monto mensual</label><input type="number" id="montoSub" placeholder="Ej. 179.00" min="0.01" step="0.01" required></div>
+                        <div class="form-group"><label for="categoriaSub">Se descuenta de</label><select id="categoriaSub" required><option value="necesidades">🏠 Necesidades</option><option value="deseos">🎉 Deseos</option></select></div>
+                        <button type="submit" class="btn" style="background:transparent;border:1.5px solid var(--warning);color:var(--warning);">➕ Añadir Suscripción</button>
+                    </form>
+                </div>
+                <div class="subscription-list-card">
+                    <h3>📌 Suscripciones Activas</h3>
+                    <ul class="subscription-items" id="subscriptionList"><li class="empty-subs">No hay suscripciones registradas.</li></ul>
+                </div>
+            </section>
+        </div>
     </div>
-  </div>
 
-  <!-- MODAL: Mandar a ahorro -->
-  <div class="modal hidden" id="save-modal">
-    <div class="modal-card">
-      <div class="modal-head">
-        <h4>Mandar a ahorro</h4>
-        <button class="close-modal" data-close-modal>&times;</button>
-      </div>
-      <div class="form-stack">
-        <input type="text" id="sav-concepto" placeholder="Concepto" value="Ahorro" />
-        <input type="number" id="sav-monto" placeholder="Monto" min="0" step="0.01" inputmode="decimal" />
-        <button class="btn btn-blue" id="sav-submit">Mover a ahorro</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- MODAL: Regresar de ahorro -->
-  <div class="modal hidden" id="return-modal">
-    <div class="modal-card">
-      <div class="modal-head">
-        <h4>Regresar de ahorro</h4>
-        <button class="close-modal" data-close-modal>&times;</button>
-      </div>
-      <div class="form-stack">
-        <input type="text" id="ret-concepto" placeholder="Concepto" value="Retiro de ahorro" />
-        <input type="number" id="ret-monto" placeholder="Monto" min="0" step="0.01" inputmode="decimal" />
-        <button class="btn btn-cyan" id="ret-submit">Regresar al balance</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- MODAL: Ajustar balance -->
-  <div class="modal hidden" id="adjust-modal">
-    <div class="modal-card">
-      <div class="modal-head">
-        <h4>Ajustar balance</h4>
-        <button class="close-modal" data-close-modal>&times;</button>
-      </div>
-      <div class="form-stack">
-        <input type="text" id="adj-concepto" placeholder="Nota del ajuste (opcional)" />
-        <input type="number" id="adj-balance" placeholder="Nuevo balance real" min="0" step="0.01" inputmode="decimal" />
-        <button class="btn btn-gray" id="adj-submit">Aplicar ajuste</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- MODAL: Nueva suscripción -->
-  <div class="modal hidden" id="subscription-modal">
-    <div class="modal-card">
-      <div class="modal-head">
-        <h4>Nueva suscripción</h4>
-        <button class="close-modal" data-close-modal>&times;</button>
-      </div>
-      <div class="form-stack">
-        <input type="text" id="sub-nombre" placeholder="Nombre" />
-        <input type="number" id="sub-dia" placeholder="Día de cobro (1-31)" min="1" max="31" step="1" inputmode="numeric" />
-        <input type="number" id="sub-monto" placeholder="Monto" min="0" step="0.01" inputmode="decimal" />
-        <select id="sub-cat">
-          <option value="nec">Necesidad</option>
-          <option value="gus">Gusto</option>
-          <option value="aho">Ahorro</option>
-        </select>
-        <button class="btn btn-accent" id="sub-submit">Agregar pago</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- MODAL: Editar movimiento -->
-  <div class="modal hidden" id="edit-modal">
-    <div class="modal-card">
-      <div class="modal-head">
-        <h4>Editar movimiento</h4>
-        <button class="close-modal" data-close-modal>&times;</button>
-      </div>
-      <div class="form-stack">
-        <input type="hidden" id="edit-id" />
-        <input type="text" id="edit-concepto" placeholder="Concepto" />
-        <input type="number" id="edit-monto" placeholder="Monto" min="0" step="0.01" inputmode="decimal" />
-        <select id="edit-cat">
-          <option value="nec">Necesidad</option>
-          <option value="gus">Gusto</option>
-          <option value="aho">Ahorro</option>
-        </select>
-        <button class="btn btn-accent" id="edit-submit">Guardar cambios</button>
-      </div>
-    </div>
-  </div>
-
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <script src="app.js"></script>
+    <div class="toast-container" id="toastContainer"></div>
+    <script src="js/app.js"></script>
 </body>
 </html>
