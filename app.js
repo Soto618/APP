@@ -1,259 +1,576 @@
-(function() {
-    const STORAGE_KEY = 'financeFlowDataV2';
+// app.js - Presupuesto 50/30/20 con lógica quincenal inteligente
+// MODIFICADO: Muestra en "Libre Real" los servicios comprometidos (próximos pagos)
 
-    let state = {
-        categorias: {
-            necesidades: { asignado: 0, gastado: 0 },
-            deseos: { asignado: 0, gastado: 0 },
-            ahorro: { asignado: 0, gastado: 0 }
-        },
-        historialGastos: [],
-        suscripciones: []
-    };
+// ======================== CLAVES LOCALSTORAGE ========================
+const STORAGE_KEYS = {
+  SALARY: 'budget_salary',
+  SALARY_DATE: 'budget_salary_date',
+  EXPENSES: 'budget_expenses',
+  SERVICES: 'recurring_services',
+  PAID_SERVICES_IDS: 'paid_services_ids'
+};
 
-    // Referencias DOM
-    const $saldoTotal = document.getElementById('saldoTotal');
-    const $gastoDiario = document.getElementById('gastoDiario');
-    const $necAsignado = document.getElementById('necAsignado');
-    const $necGastado = document.getElementById('necGastado');
-    const $necDisponible = document.getElementById('necDisponible');
-    const $necProgress = document.getElementById('necProgress');
-    const $desAsignado = document.getElementById('desAsignado');
-    const $desGastado = document.getElementById('desGastado');
-    const $desDisponible = document.getElementById('desDisponible');
-    const $desProgress = document.getElementById('desProgress');
-    const $ahoAsignado = document.getElementById('ahoAsignado');
-    const $ahoGastado = document.getElementById('ahoGastado');
-    const $ahoDisponible = document.getElementById('ahoDisponible');
-    const $ahoProgress = document.getElementById('ahoProgress');
-    const $historyList = document.getElementById('historyList');
-    const $subscriptionList = document.getElementById('subscriptionList');
-    const $toastContainer = document.getElementById('toastContainer');
+// Datos precargados de servicios (10 servicios)
+const DEFAULT_SERVICES = [
+  { id: 1, name: "PS Plus", amount: 9.99, category: "Deseos", dueDay: 4 },
+  { id: 2, name: "Internet Wifi", amount: 50, category: "Necesidades", dueDay: 5 },
+  { id: 3, name: "Pago del terreno", amount: 150, category: "Necesidades", dueDay: 5 },
+  { id: 4, name: "Game Pass", amount: 16.49, category: "Deseos", dueDay: 6 },
+  { id: 5, name: "Tidal", amount: 16.99, category: "Deseos", dueDay: 11 },
+  { id: 6, name: "Prime Video", amount: 14.99, category: "Deseos", dueDay: 13 },
+  { id: 7, name: "Wifi", amount: 70, category: "Necesidades", dueDay: 14 },
+  { id: 8, name: "Seguro de Carro", amount: 170, category: "Necesidades", dueDay: 16 },
+  { id: 9, name: "Streaming", amount: 15, category: "Deseos", dueDay: 17 },
+  { id: 10, name: "Google One", amount: 1.99, category: "Necesidades", dueDay: 23 }
+];
 
-    // Pestañas
-    const tabButtons = document.querySelectorAll('.tab-btn');
-    const tabContents = document.querySelectorAll('.tab-content');
+// ======================== ESTADO GLOBAL ========================
+let currentSalary = 0;
+let salaryDate = '';
+let currentFortnight = '';
+let expenses = [];
+let services = [];
+let paidServiceIds = [];
+let budgetChart = null;
 
-    function switchTab(tabId) {
-        tabContents.forEach(tc => tc.classList.remove('active'));
-        tabButtons.forEach(btn => btn.classList.remove('active'));
-        document.getElementById(`tab-${tabId}`).classList.add('active');
-        document.querySelector(`.tab-btn[data-tab="${tabId}"]`).classList.add('active');
+// Referencias DOM
+let salaryDisplay, salaryDateDisplay, fortnightDisplay;
+let needsAlloc, wantsAlloc, savingsAlloc;
+let needsAllocDetail, wantsAllocDetail;
+let needsCommitted, wantsCommitted;
+let needsSpent, wantsSpent;
+let needsFree, wantsFree;
+let expenseListContainer, alertsContainer, servicesListContainer, agendaContainer;
+
+// ======================== FUNCIONES AUXILIARES ========================
+function calculateAllocations(salary) {
+  return {
+    needs: salary * 0.5,
+    wants: salary * 0.3,
+    savings: salary * 0.2
+  };
+}
+
+function getSpentByCategory() {
+  let spentNeeds = 0, spentWants = 0, spentSavings = 0;
+  expenses.forEach(exp => {
+    if (exp.category === 'Necesidades') spentNeeds += exp.amount;
+    else if (exp.category === 'Deseos') spentWants += exp.amount;
+    else if (exp.category === 'Ahorro/Deuda') spentSavings += exp.amount;
+  });
+  return { spentNeeds, spentWants, spentSavings };
+}
+
+function getFortnightFromDate(dateStr) {
+  if (!dateStr) return '';
+  const day = new Date(dateStr).getDate();
+  return day <= 15 ? 'first' : 'second';
+}
+
+function getDueDayRange(fortnight) {
+  return fortnight === 'first' ? { min: 1, max: 15 } : { min: 16, max: 31 };
+}
+
+function calculateCommittedByCategory(category) {
+  if (!currentFortnight) return 0;
+  const range = getDueDayRange(currentFortnight);
+  return services
+    .filter(s => s.category === category && s.dueDay >= range.min && s.dueDay <= range.max && !paidServiceIds.includes(s.id))
+    .reduce((sum, s) => sum + s.amount, 0);
+}
+
+// Obtener lista de servicios comprometidos (no pagados) para una categoría
+function getCommittedServicesList(category) {
+  if (!currentFortnight) return [];
+  const range = getDueDayRange(currentFortnight);
+  return services
+    .filter(s => s.category === category && s.dueDay >= range.min && s.dueDay <= range.max && !paidServiceIds.includes(s.id))
+    .sort((a,b) => a.dueDay - b.dueDay);
+}
+
+function getTodaysDueServices() {
+  const today = new Date().getDate();
+  if (!currentFortnight) return [];
+  const range = getDueDayRange(currentFortnight);
+  return services.filter(s => s.dueDay === today && s.dueDay >= range.min && s.dueDay <= range.max && !paidServiceIds.includes(s.id));
+}
+
+// ======================== PERSISTENCIA ========================
+function saveToLocalStorage() {
+  localStorage.setItem(STORAGE_KEYS.SALARY, currentSalary.toString());
+  localStorage.setItem(STORAGE_KEYS.SALARY_DATE, salaryDate);
+  localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(expenses));
+  localStorage.setItem(STORAGE_KEYS.SERVICES, JSON.stringify(services));
+  localStorage.setItem(STORAGE_KEYS.PAID_SERVICES_IDS, JSON.stringify(paidServiceIds));
+}
+
+function loadFromLocalStorage() {
+  const savedSalary = localStorage.getItem(STORAGE_KEYS.SALARY);
+  currentSalary = (savedSalary && !isNaN(parseFloat(savedSalary))) ? parseFloat(savedSalary) : 0;
+  salaryDate = localStorage.getItem(STORAGE_KEYS.SALARY_DATE) || '';
+  const savedExpenses = localStorage.getItem(STORAGE_KEYS.EXPENSES);
+  expenses = savedExpenses ? JSON.parse(savedExpenses) : [];
+  if (!Array.isArray(expenses)) expenses = [];
+  const savedServices = localStorage.getItem(STORAGE_KEYS.SERVICES);
+  if (savedServices) {
+    services = JSON.parse(savedServices);
+  } else {
+    services = JSON.parse(JSON.stringify(DEFAULT_SERVICES));
+  }
+  const savedPaid = localStorage.getItem(STORAGE_KEYS.PAID_SERVICES_IDS);
+  paidServiceIds = savedPaid ? JSON.parse(savedPaid) : [];
+  currentFortnight = getFortnightFromDate(salaryDate);
+}
+
+function resetPeriod(newSalary, newDate) {
+  currentSalary = newSalary;
+  salaryDate = newDate;
+  currentFortnight = getFortnightFromDate(newDate);
+  expenses = [];
+  paidServiceIds = [];
+  saveToLocalStorage();
+  refreshUI();
+  renderAlerts();
+}
+
+// ======================== FUNCIONES DE GASTOS ========================
+function addExpense(description, amount, category, subcategory = "Manual") {
+  if (!currentSalary || currentSalary <= 0) {
+    alert('⚠️ Primero establece un sueldo quincenal válido.');
+    return false;
+  }
+  if (!description.trim() || amount <= 0) {
+    alert('❌ Completa concepto y monto > 0.');
+    return false;
+  }
+  
+  const alloc = calculateAllocations(currentSalary);
+  const { spentNeeds, spentWants, spentSavings } = getSpentByCategory();
+  const committedNeeds = calculateCommittedByCategory('Necesidades');
+  const committedWants = calculateCommittedByCategory('Deseos');
+  
+  let currentSpent = 0, limit = 0, committed = 0;
+  if (category === 'Necesidades') {
+    currentSpent = spentNeeds;
+    limit = alloc.needs;
+    committed = committedNeeds;
+  } else if (category === 'Deseos') {
+    currentSpent = spentWants;
+    limit = alloc.wants;
+    committed = committedWants;
+  } else {
+    // Ahorro no tiene compromiso
+    currentSpent = spentSavings;
+    limit = alloc.savings;
+    if (currentSpent + amount > limit + 0.01) {
+      alert(`⚠️ Excedes presupuesto de Ahorro. Disponible: $${(limit - currentSpent).toFixed(2)}`);
+      return false;
     }
+    expenses.push({ id: Date.now(), description: description.trim(), amount, category, subcategory });
+    saveToLocalStorage();
+    refreshUI();
+    return true;
+  }
+  
+  if (currentSpent + amount + committed > limit + 0.01) {
+    alert(`⚠️ Excedes el presupuesto de ${category}. Libre real actual: $${Math.max(0, limit - currentSpent - committed).toFixed(2)}`);
+    return false;
+  }
+  
+  expenses.push({ id: Date.now(), description: description.trim(), amount, category, subcategory });
+  saveToLocalStorage();
+  refreshUI();
+  return true;
+}
 
-    tabButtons.forEach(btn => {
-        btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+function deleteExpenseById(id) {
+  expenses = expenses.filter(exp => exp.id !== id);
+  saveToLocalStorage();
+  refreshUI();
+}
+
+function renderExpenseList() {
+  if (!expenseListContainer) return;
+  if (expenses.length === 0) {
+    expenseListContainer.innerHTML = '<div class="text-center text-gray-400 text-sm py-4">📭 No hay gastos aún.</div>';
+    return;
+  }
+  expenseListContainer.innerHTML = expenses.map(exp => `
+    <div class="bg-white/60 rounded-xl p-3 flex justify-between items-center shadow-sm">
+      <div class="flex-1">
+        <div class="font-medium text-gray-800 text-sm">${escapeHtml(exp.description)}</div>
+        <div class="flex gap-2 text-[11px] text-gray-500">${exp.category} • ${exp.subcategory}</div>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="font-bold">$${exp.amount.toFixed(2)}</span>
+        <button class="delete-expense text-red-400" data-id="${exp.id}">🗑️</button>
+      </div>
+    </div>
+  `).join('');
+  document.querySelectorAll('.delete-expense').forEach(btn => {
+    btn.addEventListener('click', () => deleteExpenseById(parseInt(btn.dataset.id)));
+  });
+}
+
+// ======================== FUNCIONES DE SERVICIOS (CRUD) ========================
+function renderServicesList() {
+  if (!servicesListContainer) return;
+  if (services.length === 0) {
+    servicesListContainer.innerHTML = '<div class="text-center text-gray-400 text-sm py-4">📌 No hay servicios. Agrega uno.</div>';
+    return;
+  }
+  servicesListContainer.innerHTML = services.map(s => `
+    <div class="bg-white/60 rounded-xl p-3 flex justify-between items-center">
+      <div>
+        <div class="font-medium">${escapeHtml(s.name)}</div>
+        <div class="text-xs text-gray-500">$${s.amount.toFixed(2)} • ${s.category} • Vence día ${s.dueDay}</div>
+      </div>
+      <button class="delete-service text-red-500 text-xl" data-id="${s.id}">🗑️</button>
+    </div>
+  `).join('');
+  document.querySelectorAll('.delete-service').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = parseInt(btn.dataset.id);
+      services = services.filter(s => s.id !== id);
+      paidServiceIds = paidServiceIds.filter(pid => pid !== id);
+      saveToLocalStorage();
+      refreshUI();
     });
+  });
+}
 
-    // Persistencia
-    function guardarDatos() {
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) { console.warn(e); }
+function addService(name, amount, category, dueDay) {
+  if (!name.trim() || amount <= 0 || dueDay < 1 || dueDay > 31) {
+    alert('Completa todos los campos: nombre, monto >0, día entre 1 y 31');
+    return false;
+  }
+  const newId = Date.now();
+  services.push({ id: newId, name: name.trim(), amount: parseFloat(amount), category, dueDay: parseInt(dueDay) });
+  saveToLocalStorage();
+  refreshUI();
+  return true;
+}
+
+function resetToDefaultServices() {
+  if (confirm('¿Restaurar la lista de servicios predeterminada? Se perderán los cambios actuales.')) {
+    services = JSON.parse(JSON.stringify(DEFAULT_SERVICES));
+    const existingIds = services.map(s => s.id);
+    paidServiceIds = paidServiceIds.filter(id => existingIds.includes(id));
+    saveToLocalStorage();
+    refreshUI();
+  }
+}
+
+// ======================== AGENDA ========================
+function renderAgenda() {
+  if (!agendaContainer) return;
+  const today = new Date();
+  const currentDay = today.getDate();
+  const currentMonth = today.getMonth();
+  const currentYear = today.getFullYear();
+  
+  let upcoming = [];
+  services.forEach(service => {
+    let dueDate = new Date(currentYear, currentMonth, service.dueDay);
+    if (dueDate < today) {
+      dueDate = new Date(currentYear, currentMonth + 1, service.dueDay);
     }
+    const daysDiff = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
+    upcoming.push({ ...service, dueDate, daysLeft: daysDiff });
+  });
+  upcoming.sort((a,b) => a.daysLeft - b.daysLeft);
+  
+  if (upcoming.length === 0) {
+    agendaContainer.innerHTML = '<div class="text-center text-gray-400 text-sm py-4">🎉 No hay pagos programados.</div>';
+    return;
+  }
+  agendaContainer.innerHTML = upcoming.map(s => `
+    <div class="bg-white/50 rounded-xl p-3 flex justify-between items-center">
+      <div>
+        <div class="font-medium">${escapeHtml(s.name)}</div>
+        <div class="text-xs">${s.category} • $${s.amount.toFixed(2)}</div>
+      </div>
+      <div class="text-right">
+        <span class="text-sm font-bold ${s.daysLeft === 0 ? 'text-red-600' : 'text-gray-600'}">
+          ${s.daysLeft === 0 ? 'Hoy vence' : s.daysLeft === 1 ? 'Mañana' : `En ${s.daysLeft} días`}
+        </span>
+      </div>
+    </div>
+  `).join('');
+}
 
-    function cargarDatos() {
-        try {
-            const raw = localStorage.getItem(STORAGE_KEY);
-            if (raw) {
-                const parsed = JSON.parse(raw);
-                if (parsed && parsed.categorias && parsed.historialGastos && parsed.suscripciones) {
-                    state = parsed;
-                    Object.values(state.categorias).forEach(cat => {
-                        cat.asignado = Number(cat.asignado) || 0;
-                        cat.gastado = Number(cat.gastado) || 0;
-                    });
-                    state.historialGastos.forEach(g => g.monto = Number(g.monto) || 0);
-                    state.suscripciones.forEach(s => {
-                        s.montoMensual = Number(s.montoMensual) || 0;
-                        s.montoQuincenal = Number(s.montoQuincenal) || 0;
-                    });
-                    return true;
-                }
-            }
-        } catch (e) { console.warn(e); }
-        return false;
-    }
-
-    // Utilidades matemáticas
-    const disponibleDe = cat => Math.max(0, cat.asignado - cat.gastado);
-    const saldoTotal = () => disponibleDe(state.categorias.necesidades) + disponibleDe(state.categorias.deseos) + disponibleDe(state.categorias.ahorro);
-    const gastoDiario = () => {
-        const d = disponibleDe(state.categorias.necesidades) + disponibleDe(state.categorias.deseos);
-        return d > 0 ? d / 15 : 0;
-    };
-    const porcentajeGastado = cat => cat.asignado > 0 ? Math.min(100, (cat.gastado / cat.asignado) * 100) : 0;
-    const fm = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 2 }).format;
-
-    function actualizarUI() {
-        const nec = state.categorias.necesidades;
-        const des = state.categorias.deseos;
-        const aho = state.categorias.ahorro;
-
-        $necAsignado.textContent = fm(nec.asignado);
-        $necGastado.textContent = fm(nec.gastado);
-        const necDisp = disponibleDe(nec);
-        $necDisponible.textContent = fm(necDisp);
-        $necDisponible.className = 'detail-value ' + (necDisp > 0 ? 'positive' : 'negative');
-        $necProgress.style.width = porcentajeGastado(nec).toFixed(1) + '%';
-
-        $desAsignado.textContent = fm(des.asignado);
-        $desGastado.textContent = fm(des.gastado);
-        const desDisp = disponibleDe(des);
-        $desDisponible.textContent = fm(desDisp);
-        $desDisponible.className = 'detail-value ' + (desDisp > 0 ? 'positive' : 'negative');
-        $desProgress.style.width = porcentajeGastado(des).toFixed(1) + '%';
-
-        $ahoAsignado.textContent = fm(aho.asignado);
-        $ahoGastado.textContent = fm(aho.gastado);
-        const ahoDisp = disponibleDe(aho);
-        $ahoDisponible.textContent = fm(ahoDisp);
-        $ahoDisponible.className = 'detail-value ' + (ahoDisp > 0 ? 'positive' : 'negative');
-        $ahoProgress.style.width = porcentajeGastado(aho).toFixed(1) + '%';
-
-        const total = saldoTotal();
-        $saldoTotal.textContent = fm(total);
-        $saldoTotal.style.color = total <= 0 && (nec.asignado > 0 || des.asignado > 0) ? 'var(--danger)' : 'var(--text-accent)';
-        $gastoDiario.textContent = fm(gastoDiario());
-
-        renderizarHistorial();
-        renderizarSuscripciones();
-    }
-
-    function escaparHTML(str) {
-        const div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
-    }
-
-    function renderizarHistorial() {
-        if (state.historialGastos.length === 0) {
-            $historyList.innerHTML = '<li class="empty-history">No hay movimientos registrados aún.</li>';
-            return;
+// ======================== ALERTAS Y PAGO RÁPIDO ========================
+function renderAlerts() {
+  if (!alertsContainer) return;
+  const dueToday = getTodaysDueServices();
+  if (dueToday.length === 0) {
+    alertsContainer.innerHTML = '';
+    return;
+  }
+  alertsContainer.innerHTML = dueToday.map(s => `
+    <div class="alert-card rounded-xl p-4 flex justify-between items-center">
+      <div>
+        <div class="font-bold text-amber-800">⚠️ Hoy vence el pago de ${escapeHtml(s.name)}</div>
+        <div class="text-sm">Monto: $${s.amount.toFixed(2)} • ${s.category}</div>
+      </div>
+      <button class="pay-service-btn bg-emerald-500 text-white px-3 py-2 rounded-xl text-sm shadow-md active:scale-95" data-id="${s.id}" data-name="${escapeHtml(s.name)}" data-amount="${s.amount}" data-category="${s.category}">✅ Pagar</button>
+    </div>
+  `).join('');
+  
+  document.querySelectorAll('.pay-service-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const id = parseInt(btn.dataset.id);
+      const name = btn.dataset.name;
+      const amount = parseFloat(btn.dataset.amount);
+      const category = btn.dataset.category;
+      if (confirm(`Registrar pago de "${name}" por $${amount.toFixed(2)} en la categoría ${category}?`)) {
+        if (!paidServiceIds.includes(id)) {
+          paidServiceIds.push(id);
+          expenses.push({
+            id: Date.now(),
+            description: `${name} (pago recurrente)`,
+            amount: amount,
+            category: category,
+            subcategory: "Pago automático"
+          });
+          saveToLocalStorage();
+          refreshUI();
+          renderAlerts();
+        } else {
+          alert('Este servicio ya fue marcado como pagado en el período actual.');
         }
-        const recientes = state.historialGastos.slice(-20).reverse();
-        $historyList.innerHTML = recientes.map(g => `
-            <li class="history-item">
-                <span class="desc" title="${escaparHTML(g.descripcion)}">${escaparHTML(g.descripcion)}</span>
-                <span class="amount">−${fm(g.monto)}</span>
-                <span class="cat-tag ${g.categoria}">${g.categoria === 'necesidades' ? 'Nec.' : 'Des.'}</span>
-            </li>`).join('');
-    }
-
-    function renderizarSuscripciones() {
-        if (state.suscripciones.length === 0) {
-            $subscriptionList.innerHTML = '<li class="empty-subs">No hay suscripciones registradas.</li>';
-            return;
-        }
-        $subscriptionList.innerHTML = state.suscripciones.map((s, idx) => `
-            <li class="subscription-item ${s.categoria}">
-                <div class="subscription-info">
-                    <div class="sub-name">${escaparHTML(s.nombre)}</div>
-                    <div class="sub-details">Mensual: ${fm(s.montoMensual)} · Quincenal: ${fm(s.montoQuincenal)} · ${s.categoria === 'necesidades' ? 'Necesidades' : 'Deseos'}</div>
-                </div>
-                <button class="btn-delete-sub" data-index="${idx}">✕</button>
-            </li>`).join('');
-
-        document.querySelectorAll('.btn-delete-sub').forEach(btn => {
-            btn.addEventListener('click', function() {
-                const index = parseInt(this.dataset.index, 10);
-                eliminarSuscripcion(index);
-            });
-        });
-    }
-
-    function mostrarToast(mensaje, tipo = 'success') {
-        const toast = document.createElement('div');
-        toast.className = `toast ${tipo}`;
-        toast.innerHTML = `<span>${tipo === 'success' ? '✅' : tipo === 'error' ? '❌' : '⚠️'}</span> ${mensaje}`;
-        $toastContainer.appendChild(toast);
-        setTimeout(() => toast.remove(), 2900);
-    }
-
-    function procesarIngreso(monto) {
-        if (isNaN(monto) || monto <= 0) { mostrarToast('Monto inválido', 'error'); return false; }
-        const m = Math.round(monto * 100) / 100;
-        const nec = Math.round(m * 0.5 * 100) / 100;
-        const des = Math.round(m * 0.3 * 100) / 100;
-        const aho = m - nec - des;
-        state.categorias.necesidades.asignado += nec;
-        state.categorias.deseos.asignado += des;
-        state.categorias.ahorro.asignado += aho;
-        guardarDatos();
-        actualizarUI();
-        mostrarToast(`Ingreso de ${fm(m)} distribuido 50/30/20`, 'success');
-        return true;
-    }
-
-    function registrarGasto(monto, desc, cat) {
-        if (isNaN(monto) || monto <= 0) { mostrarToast('Monto inválido', 'error'); return false; }
-        const m = Math.round(monto * 100) / 100;
-        const categoria = state.categorias[cat];
-        if (m > disponibleDe(categoria) + 0.001) {
-            mostrarToast(`Fondos insuficientes en ${cat === 'necesidades' ? 'Necesidades' : 'Deseos'}`, 'error');
-            return false;
-        }
-        categoria.gastado += m;
-        state.historialGastos.push({ monto: m, descripcion: desc.trim(), categoria: cat, fecha: new Date().toISOString() });
-        guardarDatos();
-        actualizarUI();
-        mostrarToast(`Gasto de ${fm(m)} registrado`, 'success');
-        return true;
-    }
-
-    function agregarSuscripcion(nombre, montoMensual, cat) {
-        if (!nombre || nombre.trim() === '') { mostrarToast('Nombre requerido', 'warning'); return false; }
-        if (isNaN(montoMensual) || montoMensual <= 0) { mostrarToast('Monto inválido', 'error'); return false; }
-        const mMensual = Math.round(montoMensual * 100) / 100;
-        const mQuincenal = Math.round(mMensual / 2 * 100) / 100;
-        const categoria = state.categorias[cat];
-        if (mQuincenal > disponibleDe(categoria) + 0.001) {
-            mostrarToast(`Sin fondos suficientes en ${cat === 'necesidades' ? 'Necesidades' : 'Deseos'}`, 'error');
-            return false;
-        }
-        categoria.gastado += mQuincenal;
-        state.suscripciones.push({ id: Date.now(), nombre: nombre.trim(), montoMensual: mMensual, montoQuincenal: mQuincenal, categoria: cat });
-        guardarDatos();
-        actualizarUI();
-        mostrarToast(`Suscripción "${nombre.trim()}" añadida`, 'success');
-        return true;
-    }
-
-    function eliminarSuscripcion(index) {
-        if (index < 0 || index >= state.suscripciones.length) return;
-        const s = state.suscripciones[index];
-        state.categorias[s.categoria].gastado = Math.max(0, state.categorias[s.categoria].gastado - s.montoQuincenal);
-        state.suscripciones.splice(index, 1);
-        guardarDatos();
-        actualizarUI();
-        mostrarToast(`Suscripción "${s.nombre}" eliminada`, 'warning');
-    }
-
-    // Eventos
-    document.getElementById('formIngresoForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        const val = parseFloat(document.getElementById('montoIngreso').value);
-        if (procesarIngreso(val)) { this.reset(); document.getElementById('montoIngreso').focus(); }
+      }
     });
+  });
+}
 
-    document.getElementById('formGastoForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        const monto = parseFloat(document.getElementById('montoGasto').value);
-        const desc = document.getElementById('descripcionGasto').value.trim();
-        const cat = document.getElementById('categoriaGasto').value;
-        if (!desc) return mostrarToast('Ingresa una descripción', 'warning');
-        if (registrarGasto(monto, desc, cat)) { this.reset(); document.getElementById('categoriaGasto').value = 'necesidades'; document.getElementById('montoGasto').focus(); }
+// ======================== ACTUALIZACIÓN COMPLETA DEL UI (MODIFICADA) ========================
+function refreshUI() {
+  if (!salaryDisplay) return;
+  
+  const alloc = calculateAllocations(currentSalary);
+  const { spentNeeds, spentWants, spentSavings } = getSpentByCategory();
+  const committedNeeds = calculateCommittedByCategory('Necesidades');
+  const committedWants = calculateCommittedByCategory('Deseos');
+  
+  // Actualizar textos básicos
+  salaryDisplay.textContent = currentSalary ? `$${currentSalary.toFixed(2)}` : '—';
+  salaryDateDisplay.textContent = salaryDate ? `Período: ${salaryDate}` : 'Sin fecha';
+  fortnightDisplay.textContent = currentFortnight === 'first' ? '📆 Primera quincena (días 1-15)' : (currentFortnight === 'second' ? '📆 Segunda quincena (días 16-31)' : '');
+  
+  needsAlloc.textContent = wantsAlloc.textContent = savingsAlloc.textContent = '—';
+  needsAllocDetail.textContent = wantsAllocDetail.textContent = '—';
+  if (currentSalary) {
+    needsAlloc.textContent = `$${alloc.needs.toFixed(2)}`;
+    wantsAlloc.textContent = `$${alloc.wants.toFixed(2)}`;
+    savingsAlloc.textContent = `$${alloc.savings.toFixed(2)}`;
+    needsAllocDetail.textContent = `$${alloc.needs.toFixed(2)}`;
+    wantsAllocDetail.textContent = `$${alloc.wants.toFixed(2)}`;
+  }
+  
+  // Comprometido (totales)
+  needsCommitted.textContent = `$${committedNeeds.toFixed(2)}`;
+  wantsCommitted.textContent = `$${committedWants.toFixed(2)}`;
+  
+  // Gastado real
+  needsSpent.textContent = `$${spentNeeds.toFixed(2)}`;
+  wantsSpent.textContent = `$${spentWants.toFixed(2)}`;
+  
+  // Cálculo de libre real
+  const freeNeeds = currentSalary ? (alloc.needs - spentNeeds - committedNeeds) : 0;
+  const freeWants = currentSalary ? (alloc.wants - spentWants - committedWants) : 0;
+  
+  // --- NUEVO: obtener lista de servicios comprometidos (próximos pagos) ---
+  const committedServicesNeeds = getCommittedServicesList('Necesidades');
+  const committedServicesWants = getCommittedServicesList('Deseos');
+  
+  // --- Desglose de gastos manuales por subcategoría (excluyendo "Pago automático") ---
+  const getSubcategoryBreakdown = (category) => {
+    const filtered = expenses.filter(exp => exp.category === category && exp.subcategory !== "Pago automático");
+    const breakdown = {};
+    filtered.forEach(exp => {
+      const sub = exp.subcategory;
+      breakdown[sub] = (breakdown[sub] || 0) + exp.amount;
     });
+    return breakdown;
+  };
+  
+  const needsBreakdown = getSubcategoryBreakdown('Necesidades');
+  const wantsBreakdown = getSubcategoryBreakdown('Deseos');
+  
+  // Función para construir el HTML de la caja "Libre Real" (con todo el desglose)
+  const buildFreeBoxHTML = (freeAmount, committedServices, manualBreakdown, categoryName) => {
+    let html = `<div class="text-lg font-black text-emerald-700">$${Math.max(0, freeAmount).toFixed(2)}</div>`;
+    
+    // Sección: Próximos pagos comprometidos (servicios que aún no has pagado)
+    if (committedServices.length > 0) {
+      html += `<div class="border-t border-gray-300 my-2"></div>`;
+      html += `<div class="text-xs font-semibold text-gray-600 mt-1">📌 Próximos pagos (comprometidos):</div>`;
+      html += `<ul class="text-xs space-y-1 mt-1">`;
+      committedServices.forEach(s => {
+        html += `<li class="flex justify-between"><span>• ${escapeHtml(s.name)} (día ${s.dueDay})</span><span class="font-mono">$${s.amount.toFixed(2)}</span></li>`;
+      });
+      html += `</ul>`;
+    }
+    
+    // Sección: Gastos manuales registrados (variables)
+    const manualEntries = Object.entries(manualBreakdown);
+    if (manualEntries.length > 0) {
+      html += `<div class="border-t border-gray-300 my-2"></div>`;
+      html += `<div class="text-xs font-semibold text-gray-600 mt-1">✍️ Gastos variables realizados:</div>`;
+      html += `<ul class="text-xs space-y-1 mt-1">`;
+      manualEntries.forEach(([sub, amount]) => {
+        html += `<li class="flex justify-between"><span>• ${escapeHtml(sub)}</span><span class="font-mono">$${amount.toFixed(2)}</span></li>`;
+      });
+      html += `</ul>`;
+    }
+    
+    // Si no hay nada
+    if (committedServices.length === 0 && manualEntries.length === 0) {
+      html += `<div class="border-t border-gray-300 my-2"></div>`;
+      html += `<div class="text-xs text-gray-400 italic mt-1">No hay pagos futuros ni gastos registrados.</div>`;
+    }
+    
+    return html;
+  };
+  
+  // Inyectar HTML en lugar de texto plano
+  needsFree.innerHTML = buildFreeBoxHTML(freeNeeds, committedServicesNeeds, needsBreakdown, 'Necesidades');
+  wantsFree.innerHTML = buildFreeBoxHTML(freeWants, committedServicesWants, wantsBreakdown, 'Deseos');
+  
+  // Actualizar gráfica
+  if (budgetChart && currentSalary) {
+    budgetChart.data.datasets[0].data = [spentNeeds, spentWants, spentSavings];
+    budgetChart.data.datasets[1].data = [alloc.needs, alloc.wants, alloc.savings];
+    budgetChart.update();
+  }
+  
+  renderExpenseList();
+  renderServicesList();
+  renderAgenda();
+  renderAlerts();
+}
 
-    document.getElementById('formSuscripcionForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        const nombre = document.getElementById('nombreSub').value.trim();
-        const monto = parseFloat(document.getElementById('montoSub').value);
-        const cat = document.getElementById('categoriaSub').value;
-        if (agregarSuscripcion(nombre, monto, cat)) { this.reset(); document.getElementById('categoriaSub').value = 'necesidades'; document.getElementById('nombreSub').focus(); }
+// ======================== INICIALIZACIÓN DE GRÁFICA ========================
+function initChart() {
+  const ctx = document.getElementById('budgetChart').getContext('2d');
+  budgetChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ['Necesidades', 'Deseos', 'Ahorro/Deuda'],
+      datasets: [
+        { label: '💰 Gastado real', data: [0,0,0], backgroundColor: 'rgba(99,102,241,0.7)', borderRadius: 8 },
+        { label: '🎯 Presupuesto', data: [0,0,0], backgroundColor: 'rgba(156,163,175,0.4)', borderRadius: 8, borderWidth: 1, borderColor: '#6b7280' }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: { legend: { position: 'top', labels: { font: { size: 11 } } }, tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: $${ctx.raw.toFixed(2)}` } } },
+      scales: { y: { ticks: { callback: (val) => '$' + val }, beginAtZero: true } }
+    }
+  });
+}
+
+// ======================== NAVEGACIÓN POR PESTAÑAS ========================
+function initTabs() {
+  const tabs = document.querySelectorAll('.tab-btn');
+  const contents = document.querySelectorAll('.tab-content');
+  function showTab(tabId) {
+    contents.forEach(c => c.classList.add('hidden'));
+    const active = document.getElementById(`tab-${tabId}`);
+    if (active) active.classList.remove('hidden');
+    tabs.forEach(btn => {
+      if (btn.dataset.tab === tabId) btn.classList.add('active');
+      else btn.classList.remove('active');
     });
+    if (tabId === 'dashboard' && budgetChart) {
+      setTimeout(() => { budgetChart.resize(); budgetChart.update(); }, 50);
+    }
+  }
+  tabs.forEach(btn => btn.addEventListener('click', () => showTab(btn.dataset.tab)));
+  showTab('dashboard');
+}
 
-    // Inicio
-    if (!cargarDatos()) console.log('Iniciando con datos limpios');
-    else console.log('Datos cargados desde localStorage');
-    actualizarUI();
-    document.getElementById('montoIngreso').focus();
-})();
+// ======================== EVENTOS Y ARRANQUE ========================
+document.addEventListener('DOMContentLoaded', () => {
+  // Asignar referencias
+  salaryDisplay = document.getElementById('salaryDisplay');
+  salaryDateDisplay = document.getElementById('salaryDateDisplay');
+  fortnightDisplay = document.getElementById('fortnightDisplay');
+  needsAlloc = document.getElementById('needsAlloc');
+  wantsAlloc = document.getElementById('wantsAlloc');
+  savingsAlloc = document.getElementById('savingsAlloc');
+  needsAllocDetail = document.getElementById('needsAllocDetail');
+  wantsAllocDetail = document.getElementById('wantsAllocDetail');
+  needsCommitted = document.getElementById('needsCommitted');
+  wantsCommitted = document.getElementById('wantsCommitted');
+  needsSpent = document.getElementById('needsSpent');
+  wantsSpent = document.getElementById('wantsSpent');
+  needsFree = document.getElementById('needsFree');
+  wantsFree = document.getElementById('wantsFree');
+  expenseListContainer = document.getElementById('expenseListContainer');
+  alertsContainer = document.getElementById('alertsContainer');
+  servicesListContainer = document.getElementById('servicesListContainer');
+  agendaContainer = document.getElementById('agendaContainer');
+  
+  initChart();
+  loadFromLocalStorage();
+  refreshUI();
+  initTabs();
+  
+  // Botón establecer sueldo
+  document.getElementById('setSalaryBtn').addEventListener('click', () => {
+    const raw = parseFloat(document.getElementById('salaryInput').value);
+    const date = document.getElementById('salaryDateInput').value;
+    if (isNaN(raw) || raw <= 0) { alert('Ingresa un sueldo válido'); return; }
+    if (!date) { alert('Selecciona la fecha de tu sueldo quincenal'); return; }
+    resetPeriod(raw, date);
+    document.getElementById('salaryInput').value = '';
+    document.getElementById('salaryDateInput').value = '';
+    document.querySelector('.tab-btn[data-tab="dashboard"]').click();
+  });
+  
+  // Agregar gasto manual
+  document.getElementById('addExpenseBtn').addEventListener('click', () => {
+    const desc = document.getElementById('expenseDesc').value;
+    const amount = parseFloat(document.getElementById('expenseAmount').value);
+    const cat = document.getElementById('expenseCategory').value;
+    const sub = document.getElementById('expenseSubcategory').value;
+    if (addExpense(desc, amount, cat, sub)) {
+      document.getElementById('expenseDesc').value = '';
+      document.getElementById('expenseAmount').value = '';
+    }
+  });
+  
+  // Borrar todos los gastos
+  document.getElementById('clearExpensesBtn').addEventListener('click', () => {
+    if (confirm('¿Eliminar todos los gastos del período?')) { expenses = []; saveToLocalStorage(); refreshUI(); }
+  });
+  
+  // Agregar servicio recurrente
+  document.getElementById('addServiceBtn').addEventListener('click', () => {
+    const name = document.getElementById('serviceName').value;
+    const amount = parseFloat(document.getElementById('serviceAmount').value);
+    const category = document.getElementById('serviceCategory').value;
+    const dueDay = parseInt(document.getElementById('serviceDueDay').value);
+    if (addService(name, amount, category, dueDay)) {
+      document.getElementById('serviceName').value = '';
+      document.getElementById('serviceAmount').value = '';
+      document.getElementById('serviceDueDay').value = '';
+    }
+  });
+  
+  // Restaurar servicios por defecto
+  document.getElementById('resetDefaultServicesBtn').addEventListener('click', resetToDefaultServices);
+});
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/[&<>]/g, function(m) {
+    if (m === '&') return '&amp;';
+    if (m === '<') return '&lt;';
+    if (m === '>') return '&gt;';
+    return m;
+  });
+}
