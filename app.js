@@ -1,10 +1,11 @@
-// app.js - Presupuesto 50/30/20 con corrección en descuento de gastos
+// app.js - Presupuesto 50/30/20 con Saldo Principal y nuevo diseño visual
 const STORAGE_KEYS = {
   SALARY: 'budget_salary',
   SALARY_DATE: 'budget_salary_date',
   EXPENSES: 'budget_expenses',
   SERVICES: 'recurring_services',
-  PAID_SERVICES_IDS: 'paid_services_ids'
+  PAID_SERVICES_IDS: 'paid_services_ids',
+  MAIN_BALANCE: 'main_balance'
 };
 
 const DEFAULT_SERVICES = [
@@ -26,10 +27,11 @@ let currentFortnight = '';
 let expenses = [];
 let services = [];
 let paidServiceIds = [];
+let mainBalance = 0;
 let budgetChart = null;
 
 // Referencias DOM
-let salaryDisplay, salaryDateDisplay, fortnightDisplay, totalFreeDisplay;
+let salaryDisplay, salaryDateDisplay, fortnightDisplay, mainBalanceDisplay;
 let needsAlloc, wantsAlloc, savingsAlloc;
 let needsAllocDetail, wantsAllocDetail;
 let needsCommitted, wantsCommitted;
@@ -79,12 +81,14 @@ function getTodaysDueServices() {
   return services.filter(s => s.dueDay === today && s.dueDay >= range.min && s.dueDay <= range.max && !paidServiceIds.includes(s.id));
 }
 
+// ========== PERSISTENCIA ==========
 function saveToLocalStorage() {
   localStorage.setItem(STORAGE_KEYS.SALARY, currentSalary.toString());
   localStorage.setItem(STORAGE_KEYS.SALARY_DATE, salaryDate);
   localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(expenses));
   localStorage.setItem(STORAGE_KEYS.SERVICES, JSON.stringify(services));
   localStorage.setItem(STORAGE_KEYS.PAID_SERVICES_IDS, JSON.stringify(paidServiceIds));
+  localStorage.setItem(STORAGE_KEYS.MAIN_BALANCE, mainBalance.toString());
 }
 function loadFromLocalStorage() {
   const savedSalary = localStorage.getItem(STORAGE_KEYS.SALARY);
@@ -101,9 +105,16 @@ function loadFromLocalStorage() {
   }
   const savedPaid = localStorage.getItem(STORAGE_KEYS.PAID_SERVICES_IDS);
   paidServiceIds = savedPaid ? JSON.parse(savedPaid) : [];
+  const savedBalance = localStorage.getItem(STORAGE_KEYS.MAIN_BALANCE);
+  mainBalance = (savedBalance && !isNaN(parseFloat(savedBalance))) ? parseFloat(savedBalance) : 0;
   currentFortnight = getFortnightFromDate(salaryDate);
 }
+
+// ========== REINICIAR PERÍODO (nuevo sueldo: se SUMA al saldo) ==========
 function resetPeriod(newSalary, newDate) {
+  if (newSalary > 0) {
+    mainBalance += newSalary;
+  }
   currentSalary = newSalary;
   salaryDate = newDate;
   currentFortnight = getFortnightFromDate(newDate);
@@ -113,6 +124,8 @@ function resetPeriod(newSalary, newDate) {
   refreshUI();
   renderAlerts();
 }
+
+// ========== MODIFICAR SOLO PRESUPUESTO (no afecta saldo) ==========
 function updateSalaryOnly(newSalary, newDate) {
   if (!newSalary || newSalary <= 0) { alert('Sueldo > 0'); return false; }
   if (!newDate) { alert('Selecciona fecha'); return false; }
@@ -132,7 +145,17 @@ function updateSalaryOnly(newSalary, newDate) {
   return true;
 }
 
-// ========== GASTOS ==========
+// ========== REINICIAR SALDO PRINCIPAL A CERO ==========
+function resetMainBalance() {
+  if (confirm('¿Estás seguro de que quieres reiniciar el Saldo Principal a $0? Los gastos registrados seguirán existiendo, pero el dinero real se pondrá a cero.')) {
+    mainBalance = 0;
+    saveToLocalStorage();
+    refreshUI();
+    alert('Saldo Principal reiniciado a $0.');
+  }
+}
+
+// ========== AGREGAR GASTO (resta del saldo) ==========
 function addExpense(description, amount, category, subcategory = "Manual") {
   if (!currentSalary || currentSalary <= 0) {
     alert('Primero establece un sueldo quincenal.');
@@ -140,6 +163,10 @@ function addExpense(description, amount, category, subcategory = "Manual") {
   }
   if (!description.trim() || amount <= 0) {
     alert('Concepto y monto válidos.');
+    return false;
+  }
+  if (amount > mainBalance + 0.01) {
+    alert(`⚠️ Saldo principal insuficiente. Disponible: $${mainBalance.toFixed(2)}`);
     return false;
   }
   const alloc = calculateAllocations(currentSalary);
@@ -157,34 +184,37 @@ function addExpense(description, amount, category, subcategory = "Manual") {
     limit = alloc.wants;
     committed = committedWants;
   } else {
-    // Ahorro
     if (spentSavings + amount > alloc.savings + 0.01) {
       alert(`Excedes presupuesto de Ahorro. Disponible: $${(alloc.savings - spentSavings).toFixed(2)}`);
       return false;
     }
+    mainBalance -= amount;
     expenses.push({ id: Date.now(), description: description.trim(), amount: parseFloat(amount), category, subcategory });
     saveToLocalStorage();
     refreshUI();
     return true;
   }
-  
   const freeReal = limit - currentSpent - committed;
   if (amount > freeReal + 0.01) {
-    alert(`⚠️ No tienes suficiente. Libre real: $${Math.max(0, freeReal).toFixed(2)}`);
+    alert(`⚠️ No tienes suficiente presupuesto. Libre real: $${Math.max(0, freeReal).toFixed(2)}`);
     return false;
   }
-  
+  mainBalance -= amount;
   expenses.push({ id: Date.now(), description: description.trim(), amount: parseFloat(amount), category, subcategory });
   saveToLocalStorage();
   refreshUI();
-  console.log(`✅ Gasto registrado en ${category}. Nuevo libre: ${(limit - (currentSpent+amount) - committed).toFixed(2)}`);
   return true;
 }
 
+// ========== ELIMINAR GASTO (devuelve dinero al saldo) ==========
 function deleteExpenseById(id) {
-  expenses = expenses.filter(exp => exp.id !== id);
-  saveToLocalStorage();
-  refreshUI();
+  const expense = expenses.find(exp => exp.id === id);
+  if (expense) {
+    mainBalance += expense.amount;
+    expenses = expenses.filter(exp => exp.id !== id);
+    saveToLocalStorage();
+    refreshUI();
+  }
 }
 
 function renderExpenseList() {
@@ -310,16 +340,14 @@ function renderAlerts() {
       if (confirm(`Registrar pago de "${name}" por $${amount.toFixed(2)}?`)) {
         if (!paidServiceIds.includes(id)) {
           paidServiceIds.push(id);
-          expenses.push({ id: Date.now(), description: `${name} (pago recurrente)`, amount, category, subcategory: "Pago automático" });
-          saveToLocalStorage();
-          refreshUI();
+          addExpense(`${name} (pago recurrente)`, amount, category, "Pago automático");
         } else alert('Ya pagado este período.');
       }
     });
   });
 }
 
-// ========== ACTUALIZACIÓN DE UI ==========
+// ========== ACTUALIZACIÓN DE UI (con buildFreeBoxHTML mejorada) ==========
 function refreshUI() {
   if (!salaryDisplay) return;
   const alloc = calculateAllocations(currentSalary);
@@ -330,6 +358,7 @@ function refreshUI() {
   salaryDisplay.textContent = currentSalary ? `$${currentSalary.toFixed(2)}` : '—';
   salaryDateDisplay.textContent = salaryDate ? `Período: ${salaryDate}` : 'Sin fecha';
   fortnightDisplay.textContent = currentFortnight === 'first' ? '📆 Primera quincena (días 1-15)' : (currentFortnight === 'second' ? '📆 Segunda quincena (días 16-31)' : '');
+  mainBalanceDisplay.textContent = `$${mainBalance.toFixed(2)}`;
   
   needsAlloc.textContent = wantsAlloc.textContent = savingsAlloc.textContent = '—';
   needsAllocDetail.textContent = wantsAllocDetail.textContent = '—';
@@ -347,8 +376,6 @@ function refreshUI() {
   
   const freeNeeds = currentSalary ? (alloc.needs - spentNeeds - committedNeeds) : 0;
   const freeWants = currentSalary ? (alloc.wants - spentWants - committedWants) : 0;
-  const totalFree = freeNeeds + freeWants;
-  totalFreeDisplay.textContent = `$${Math.max(0, totalFree).toFixed(2)}`;
   
   const committedServicesNeeds = getCommittedServicesList('Necesidades');
   const committedServicesWants = getCommittedServicesList('Deseos');
@@ -362,22 +389,41 @@ function refreshUI() {
   const needsBreakdown = getSubcategoryBreakdown('Necesidades');
   const wantsBreakdown = getSubcategoryBreakdown('Deseos');
   
+  // --- NUEVA FUNCIÓN CON ESTILOS MEJORADOS ---
   const buildFreeBoxHTML = (freeAmount, committedServices, manualBreakdown) => {
     let html = `<div class="text-lg font-black text-emerald-700">$${Math.max(0, freeAmount).toFixed(2)}</div>`;
+    
+    // Sección: Próximos pagos (comprometidos)
     if (committedServices.length > 0) {
-      html += `<div class="border-t border-gray-300 my-2"></div><div class="text-xs font-semibold text-gray-600">📌 Próximos pagos:</div><ul class="text-xs space-y-1 mt-1">`;
-      committedServices.forEach(s => { html += `<li class="flex justify-between"><span>• ${escapeHtml(s.name)} (día ${s.dueDay})</span><span>$${s.amount.toFixed(2)}</span></li>`; });
-      html += `</ul>`;
+      html += `<div class="border-t border-gray-300 my-2"></div>`;
+      html += `<div class="bg-amber-50/60 p-2 rounded-xl mb-2 text-amber-900">`;
+      html += `<div class="text-xs font-semibold uppercase tracking-wide flex items-center gap-1">📌 Próximos pagos</div>`;
+      html += `<div class="space-y-1 mt-1">`;
+      committedServices.forEach(s => {
+        html += `<div class="flex justify-between items-center text-xs"><span class="truncate">${escapeHtml(s.name)} (día ${s.dueDay})</span><span class="font-mono font-semibold">$${s.amount.toFixed(2)}</span></div>`;
+      });
+      html += `</div></div>`;
     }
+    
+    // Sección: Gastos variables manuales
     const manualEntries = Object.entries(manualBreakdown);
     if (manualEntries.length > 0) {
-      html += `<div class="border-t border-gray-300 my-2"></div><div class="text-xs font-semibold text-gray-600">✍️ Gastos variables:</div><ul class="text-xs space-y-1 mt-1">`;
-      manualEntries.forEach(([sub, amount]) => { html += `<li class="flex justify-between"><span>• ${escapeHtml(sub)}</span><span>$${amount.toFixed(2)}</span></li>`; });
-      html += `</ul>`;
+      if (committedServices.length === 0) html += `<div class="border-t border-gray-300 my-2"></div>`;
+      html += `<div class="bg-blue-50/60 p-2 rounded-xl text-blue-900">`;
+      html += `<div class="text-xs font-semibold uppercase tracking-wide flex items-center gap-1">✍️ Gastos variables</div>`;
+      html += `<div class="space-y-1 mt-1">`;
+      manualEntries.forEach(([sub, amount]) => {
+        html += `<div class="flex justify-between items-center text-xs"><span class="truncate">${escapeHtml(sub)}</span><span class="font-mono font-semibold">$${amount.toFixed(2)}</span></div>`;
+      });
+      html += `</div></div>`;
     }
+    
+    // Mensaje cuando no hay nada
     if (committedServices.length === 0 && manualEntries.length === 0) {
-      html += `<div class="border-t border-gray-300 my-2"></div><div class="text-xs text-gray-400 italic">Sin consumos ni pagos futuros.</div>`;
+      html += `<div class="border-t border-gray-300 my-2"></div>`;
+      html += `<div class="text-xs text-gray-400 italic text-center py-1">✨ Sin consumos ni pagos futuros.</div>`;
     }
+    
     return html;
   };
   
@@ -436,7 +482,7 @@ document.addEventListener('DOMContentLoaded', () => {
   salaryDisplay = document.getElementById('salaryDisplay');
   salaryDateDisplay = document.getElementById('salaryDateDisplay');
   fortnightDisplay = document.getElementById('fortnightDisplay');
-  totalFreeDisplay = document.getElementById('totalFreeDisplay');
+  mainBalanceDisplay = document.getElementById('mainBalanceDisplay');
   needsAlloc = document.getElementById('needsAlloc');
   wantsAlloc = document.getElementById('wantsAlloc');
   savingsAlloc = document.getElementById('savingsAlloc');
@@ -478,6 +524,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('salaryDateInput').value = '';
     document.querySelector('.tab-btn[data-tab="dashboard"]').click();
   });
+  document.getElementById('resetBalanceBtn').addEventListener('click', resetMainBalance);
   document.getElementById('addExpenseBtn').addEventListener('click', () => {
     const desc = document.getElementById('expenseDesc').value;
     const amount = parseFloat(document.getElementById('expenseAmount').value);
@@ -489,7 +536,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
   document.getElementById('clearExpensesBtn').addEventListener('click', () => {
-    if (confirm('¿Eliminar todos los gastos?')) { expenses = []; saveToLocalStorage(); refreshUI(); }
+    if (confirm('¿Eliminar todos los gastos? Se devolverá el dinero al saldo principal.')) {
+      const totalExpenses = expenses.reduce((sum, exp) => sum + exp.amount, 0);
+      mainBalance += totalExpenses;
+      expenses = [];
+      saveToLocalStorage();
+      refreshUI();
+    }
   });
   document.getElementById('addServiceBtn').addEventListener('click', () => {
     const name = document.getElementById('serviceName').value;
